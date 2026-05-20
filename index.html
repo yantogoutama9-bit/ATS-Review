@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ATS CV Optimizer </title>
+    <!-- Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        header { text-align: center; color: white; padding: 30px 20px; }
+        header h1 { font-size: 2.2em; margin-bottom: 8px; }
+        header p { opacity: 0.9; }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 1024px) { .main-grid { grid-template-columns: 1fr; } }
+
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .card h2 {
+            color: #667eea;
+            margin-bottom: 16px;
+            font-size: 1.2em;
+            border-left: 4px solid #667eea;
+            padding-left: 10px;
+        }
+
+        /* DROPZONE */
+        .dropzone {
+            border: 3px dashed #667eea;
+            border-radius: 16px;
+            padding: 40px 20px;
+            text-align: center;
+            background: linear-gradient(135deg, #f8f9ff 0%, #f0f2ff 100%);
+            transition: all 0.3s;
+            cursor: pointer;
+            position: relative;
+        }
+        .dropzone:hover, .dropzone.dragover {
+            border-color: #764ba2;
+            background: linear-gradient(135deg, #f0f2ff 0%, #e8ebff 100%);
+            transform: translateY(-2px);
+        }
+        .dropzone .icon { font-size: 48px; margin-bottom: 12px; }
+        .dropzone h3 { color: #667eea; margin-bottom: 8px; font-size: 1.2em; }
+        .dropzone p { color: #666; font-size: 14px; }
+        .dropzone .formats { margin-top: 10px; }
+        .dropzone .format-tag {
+            display: inline-block;
+            padding: 4px 12px;
+            background: #667eea;
+            color: white;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin: 3px;
+        }
+        #fileInput { display: none; }
+
+        /* LOADING */
+        .loading-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(255,255,255,0.95);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+        .loading-overlay.active { display: flex; }
+        .spinner {
+            width: 60px; height: 60px;
+            border: 5px solid #e0e0e0;
+            border-top-color: #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-text { color: #667eea; font-weight: 600; font-size: 16px; }
+        .loading-sub { color: #888; font-size: 13px; margin-top: 6px; }
+
+        textarea, input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        textarea:focus, input:focus { outline: none; border-color: #667eea; }
+        textarea { min-height: 200px; resize: vertical; }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 10px;
+            margin-right: 6px;
+        }
+        .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(102,126,234,0.4); }
+        .btn-success { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white; }
+        .btn-secondary { background: #f3f4f6; color: #555; }
+        .btn-warning { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; }
+
+        .score-box {
+            text-align: center;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 12px;
+            color: white;
+            margin-bottom: 16px;
+        }
+        .score-number { font-size: 3em; font-weight: bold; }
+        .score-label { font-size: 0.9em; opacity: 0.9; }
+        .progress-bar { width: 100%; height: 6px; background: rgba(255,255,255,0.3); border-radius: 3px; margin-top: 8px; overflow: hidden; }
+        .progress-fill { height: 100%; background: white; border-radius: 3px; transition: width 0.5s; }
+
+        .suggestion-item {
+            padding: 10px 12px;
+            border-left: 4px solid #f5576c;
+            background: #fff5f5;
+            margin-bottom: 8px;
+            border-radius: 0 6px 6px 0;
+            font-size: 13px;
+        }
+        .suggestion-item.good { border-left-color: #38ef7d; background: #f0fff4; }
+        .suggestion-item.warning { border-left-color: #fbbf24; background: #fffbeb; }
+
+        .section-tag {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin: 3px;
+        }
+        .tag-found { background: #d1fae5; color: #065f46; }
+        .tag-missing { background: #fee2e2; color: #991b1b; }
+
+        .keyword-cloud { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+        .keyword { padding: 4px 10px; border-radius: 16px; font-size: 12px; font-weight: 500; }
+        .keyword.hit { background: #dbeafe; color: #1e40af; }
+        .keyword.miss { background: #fee2e2; color: #991b1b; text-decoration: line-through; opacity: 0.6; }
+
+        #cvEditor {
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 16px;
+            min-height: 350px;
+            font-family: Calibri, Arial, sans-serif;
+            line-height: 1.6;
+            font-size: 11pt;
+            background: white;
+        }
+        #cvEditor:focus { outline: none; border-color: #667eea; }
+
+        .toolbar { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+        .toolbar button { padding: 5px 10px; font-size: 12px; border: 1px solid #ddd; background: white; border-radius: 4px; cursor: pointer; }
+        .toolbar button:hover { background: #f3f4f6; }
+
+        .cv-preview {
+            background: white;
+            border: 1px solid #ddd;
+            padding: 30px;
+            min-height: 400px;
+            font-family: Calibri, Arial, sans-serif;
+            line-height: 1.5;
+            color: #000;
+            font-size: 11pt;
+        }
+        .cv-preview h1 { font-size: 20pt; text-align: center; margin-bottom: 6px; }
+        .cv-preview .contact { text-align: center; font-size: 10pt; margin-bottom: 14px; color: #333; }
+        .cv-preview h2 { font-size: 12pt; border-bottom: 1px solid #000; padding-bottom: 3px; margin-top: 14px; margin-bottom: 6px; }
+        .cv-preview ul { margin-left: 18px; margin-bottom: 6px; }
+        .cv-preview li { margin-bottom: 3px; }
+        .cv-preview p { margin-bottom: 6px; }
+
+        .hidden { display: none; }
+        .fade-in { animation: fadeIn 0.5s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+        <div class="loading-text" id="loadingText">Memproses file...</div>
+        <div class="loading-sub" id="loadingSub">Mohon tunggu sebentar</div>
+    </div>
+
+    <div class="container">
+        <header>
+            <h1>🎯 ATS CV Optimizer</h1>
+            <p>Upload CV (PDF/Word/Image), dapatkan review ATS + saran perbaikan</p>
+        </header>
+
+        <div class="main-grid">
+            <!-- LEFT COLUMN -->
+            <div>
+                <!-- UPLOAD -->
+                <div class="card">
+                    <h2>1. Upload CV Anda</h2>
+                    <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
+                        <div class="icon">📄</div>
+                        <h3>Drag & Drop file CV di sini</h3>
+                        <p>atau klik untuk memilih file</p>
+                        <div class="formats">
+                            <span class="format-tag">PDF</span>
+                            <span class="format-tag">Word (.doc/.docx)</span>
+                            <span class="format-tag">Gambar (JPG/PNG)</span>
+                        </div>
+                    </div>
+                    <input type="file" id="fileInput" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.bmp,.gif,.webp" onchange="handleFileSelect(event)">
+
+                    <div style="margin-top:16px;">
+                        <label style="font-size:13px; font-weight:600; color:#555;">Teks CV yang diekstrak (bisa diedit):</label>
+                        <textarea id="cvInput" placeholder="Teks CV akan muncul otomatis setelah upload. Anda juga bisa paste teks langsung di sini tanpa upload file." style="min-height:180px; margin-top:6px;"></textarea>
+                    </div>
+
+                    <label style="font-size:13px; font-weight:600; color:#555; display:block; margin-top:12px;">Job Description (untuk analisis keyword):</label>
+                    <textarea id="jdInput" placeholder="Paste job description target..." style="min-height:80px; margin-top:4px;"></textarea>
+
+                    <button class="btn btn-primary" onclick="analyzeCV()">🔍 Analisis ATS</button>
+                    <button class="btn btn-secondary" onclick="loadSample()">📄 Contoh Data</button>
+                </div>
+
+                <!-- ANALYSIS -->
+                <div id="analysisCard" class="card hidden">
+                    <h2>2. Hasil Analisis ATS</h2>
+                    <div class="score-box" id="scoreBox">
+                        <div class="score-number" id="scoreNum">0</div>
+                        <div class="score-label">ATS Score / 100</div>
+                        <div class="progress-bar"><div class="progress-fill" id="scoreBar" style="width:0%"></div></div>
+                    </div>
+                    <div id="sectionsCheck"></div>
+                    <h3 style="margin:14px 0 8px; font-size:14px; color:#555;">📋 Saran Perbaikan:</h3>
+                    <div id="suggestionsList"></div>
+                    <h3 style="margin:14px 0 8px; font-size:14px; color:#555;">🎯 Keyword Matching:</h3>
+                    <div id="keywordCloud" class="keyword-cloud"></div>
+                </div>
+            </div>
+
+            <!-- RIGHT COLUMN -->
+            <div>
+                <div class="card">
+                    <h2>3. Editor CV Hasil</h2>
+                    <div class="toolbar">
+                        <button onclick="execCmd('bold')"><b>B</b></button>
+                        <button onclick="execCmd('italic')"><i>I</i></button>
+                        <button onclick="execCmd('underline')"><u>U</u></button>
+                        <button onclick="execCmd('insertUnorderedList')">• List</button>
+                        <button onclick="execCmd('formatBlock', 'H2')">H2</button>
+                        <button onclick="execCmd('removeFormat')">Clear</button>
+                    </div>
+                    <div id="cvEditor" contenteditable="true">
+                        <p style="color:#999; text-align:center;">Hasil analisis akan muncul di sini setelah klik "Analisis ATS"</p>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>4. Export & Print</h2>
+                    <button class="btn btn-success" onclick="exportToWord()" style="width:100%; justify-content:center; margin-bottom:8px;">
+                        📄 Download File Word (.doc)
+                    </button>
+                    <button class="btn btn-primary" onclick="printCV()" style="width:100%; justify-content:center;">
+                        🖨️ Print / Save as PDF
+                    </button>
+                    <p style="font-size:12px; color:#666; margin-top:10px;">
+                        💡 File .doc bisa langsung dibuka di Microsoft Word. Jika perlu .docx, buka di Word lalu "Save As" .docx.
+                    </p>
+                </div>
+
+                <div class="card">
+                    <h2>Preview CV</h2>
+                    <div id="livePreview" class="cv-preview">
+                        <p style="text-align:center; color:#999;">Preview akan muncul di sini...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script>
+// ===== DRAG & DROP =====
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+
+['dragenter','dragover','dragleave','drop'].forEach(eventName => {
+    dropzone.addEventListener(eventName, preventDefaults, false);
+    document.body.addEventListener(eventName, preventDefaults, false);
+});
+
+['dragenter','dragover'].forEach(eventName => {
+    dropzone.addEventListener(eventName, () => dropzone.classList.add('dragover'), false);
+});
+
+['dragleave','drop'].forEach(eventName => {
+    dropzone.addEventListener(eventName, () => dropzone.classList.remove('dragover'), false);
+});
+
+dropzone.addEventListener('drop', handleDrop, false);
+
+function preventDefaults(e) { e.preventDefault(); e.stopPropagation(); }
+
+function handleDrop(e) {
+    const dt = e.dataTransfer;
+    const files = dt.files;
+    if (files.length) handleFile(files[0]);
+}
+
+function handleFileSelect(e) {
+    if (e.target.files.length) handleFile(e.target.files[0]);
+}
+
+function showLoading(text, sub) {
+    document.getElementById('loadingText').textContent = text || 'Memproses...';
+    document.getElementById('loadingSub').textContent = sub || '';
+    document.getElementById('loadingOverlay').classList.add('active');
+}
+
+function hideLoading() {
+    document.getElementById('loadingOverlay').classList.remove('active');
+}
+
+async function handleFile(file) {
+    const name = file.name.toLowerCase();
+    showLoading('Membaca file...', file.name);
+
+    try {
+        let text = '';
+        if (name.endsWith('.pdf')) {
+            text = await extractPDF(file);
+        } else if (name.endsWith('.doc') || name.endsWith('.docx')) {
+            text = await extractWord(file);
+        } else if (/\.(jpg|jpeg|png|bmp|gif|webp)$/.test(name)) {
+            showLoading('OCR sedang membaca gambar...', 'Ini memerlukan waktu 10-30 detik');
+            text = await extractImage(file);
+        } else {
+            alert('Format file tidak didukung. Gunakan PDF, Word, atau gambar.');
+            hideLoading();
+            return;
+        }
+
+        document.getElementById('cvInput').value = text;
+        hideLoading();
+        // Auto scroll to textarea
+        document.getElementById('cvInput').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } catch (err) {
+        console.error(err);
+        alert('Gagal membaca file: ' + err.message);
+        hideLoading();
+    }
+}
+
+async function extractPDF(file) {
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
+    let text = '';
+    for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        const strings = content.items.map(item => item.str);
+        text += strings.join(' ') + '\n';
+    }
+    return cleanExtractedText(text);
+}
+
+async function extractWord(file) {
+    const arrayBuffer = await file.arrayBuffer();
+    const result = await mammoth.extractRawText({arrayBuffer: arrayBuffer});
+    return cleanExtractedText(result.value);
+}
+
+async function extractImage(file) {
+    const { createWorker } = Tesseract;
+    const worker = createWorker({ logger: m => {
+        if (m.status === 'recognizing text') {
+            const pct = Math.round(m.progress * 100);
+            document.getElementById('loadingSub').textContent = `OCR Progress: ${pct}%`;
+        }
+    }});
+    await worker.load();
+    await worker.loadLanguage('eng+ind');
+    await worker.initialize('eng+ind');
+    const { data: { text } } = await worker.recognize(file);
+    await worker.terminate();
+    return cleanExtractedText(text);
+}
+
+function cleanExtractedText(text) {
+    // Fix common OCR/extraction issues
+    return text
+        .replace(/\r\n/g, '\n')
+        .replace(/\r/g, '\n')
+        .replace(/[ \t]+/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+}
+
+// ===== EDITOR =====
+function execCmd(cmd, val) {
+    document.execCommand(cmd, false, val);
+    document.getElementById('cvEditor').focus();
+    updatePreview();
+}
+
+// ===== SAMPLE =====
+function loadSample() {
+    const cv = `YANTO GOUTAMA, CHCM, CPLC
+Email: yanto@email.com | Phone: +62 812-3456-7890 | LinkedIn: linkedin.com/in/yantogoutama | Jakarta, Indonesia
+
+PROFESSIONAL SUMMARY
+HR & Legal Consultant with 8+ years helping SMEs scale without HR and Legal chaos. Specialist in system building, compliance frameworks, and organizational development. Certified CHCM and CPLC. Creator of ISLA Framework.
+
+CORE COMPETENCIES
+• Human Resource Management & Talent Acquisition
+• Legal Compliance & Contract Drafting
+• HRIS Implementation & System Building
+• Employee Relations & Industrial Relations
+• Policy Development & SOP Creation
+• Training & Development Program Design
+• Labor Law Advisory & Dispute Resolution
+• Performance Management Systems
+• SME Scaling Strategy & Organizational Design
+
+PROFESSIONAL EXPERIENCE
+
+Senior HR & Legal Consultant | Goutama Advisory Group
+Jakarta, Indonesia | 2019 – Present
+• Designed HR-Legal integrated systems for 50+ SMEs using ISLA Framework, reducing compliance risks by 85%
+• Built recruitment systems that decreased time-to-hire from 45 days to 18 days
+• Drafted 200+ employment contracts and legal documents compliant with Indonesian Labor Law UU No. 13/2003
+• Advised executives on organizational restructuring, improving efficiency by 30%
+• Developed performance dashboards using HRIS, increasing retention by 25%
+• Conducted 100+ training sessions for 2,000+ participants
+
+HR Business Partner | PT Maju Bersama Indonesia
+Jakarta, Indonesia | 2015 – 2019
+• Partnered with 5 business units across 300+ employees
+• Led full-cycle recruitment, achieving 95% fill rate
+• Implemented SAP SuccessFactors, streamlining payroll for 5 locations
+• Resolved 20+ industrial relations disputes with zero litigation
+• Created competency-based assessment framework
+
+Legal Officer | Konsultan Hukum Nusantara
+Jakarta, Indonesia | 2012 – 2015
+• Reviewed and drafted commercial contracts and legal opinions
+• Conducted due diligence for 15 M&A transactions
+• Assisted in labor dispute mediation and represented clients in Industrial Relations Court
+
+EDUCATION
+
+Master of Law (LL.M) in Business Law | Universitas Indonesia | 2012 – 2014
+Bachelor of Law (S.H.) | Universitas Gadjah Mada | 2008 – 2012
+
+CERTIFICATIONS
+• Certified Human Capital Manager (CHCM) – BNSP, 2018
+• Certified Professional Legal Consultant (CPLC) – PERADI, 2017
+• Certified HRIS Specialist – SAP, 2019
+
+TECHNICAL SKILLS
+HRIS: SAP SuccessFactors, Oracle HCM, BambooHR, Odoo HR
+Legal: Contract Lifecycle Management, Legal Research, Due Diligence
+General: Microsoft Office, Google Workspace, Excel Advanced, Project Management
+
+LANGUAGES
+Indonesian (Native), English (Professional Working Proficiency), Mandarin (Conversational)`;
+
+    const jd = `We are seeking an experienced HR & Legal Consultant to help SME clients scale operations. 
+
+Requirements:
+• 5+ years in HR and Legal consulting
+• Strong knowledge of Indonesian Labor Law UU 13/2003
+• Experience with HRIS implementation (SAP, Oracle, BambooHR)
+• Proven track record in SME scaling and system building
+• Certification in HR or Legal field (CHCM, CPLC)
+• Contract drafting and review skills
+• Industrial relations and dispute resolution experience
+• Data-driven approach to HR metrics
+• Bachelor's degree in Law; Master's preferred
+• Fluent in English and Indonesian
+• Project management skills
+• Training and development experience`;
+
+    document.getElementById('cvInput').value = cv;
+    document.getElementById('jdInput').value = jd;
+}
+
+// ===== ANALYSIS =====
+function analyzeCV() {
+    const cvText = document.getElementById('cvInput').value;
+    const jdText = document.getElementById('jdInput').value;
+
+    if (!cvText.trim()) { alert('Silakan upload CV atau paste teks CV terlebih dahulu!'); return; }
+
+    const sections = detectSections(cvText);
+    const analysis = runATSAnalysis(cvText, jdText, sections);
+
+    displayScore(analysis.score);
+    displaySections(sections);
+    displaySuggestions(analysis.suggestions);
+    displayKeywords(analysis.keywords);
+
+    const optimized = generateOptimizedCV(cvText, sections);
+    document.getElementById('cvEditor').innerHTML = optimized;
+    updatePreview();
+
+    const card = document.getElementById('analysisCard');
+    card.classList.remove('hidden');
+    card.classList.add('fade-in');
+    card.scrollIntoView({ behavior: 'smooth' });
+}
+
+function detectSections(text) {
+    const s = { contact: false, summary: false, experience: false, education: false, skills: false, certifications: false };
+    const l = text.toLowerCase();
+    s.contact = /(?:email|phone|telepon|telp|linkedin|alamat|address|\+62|\d{3}-\d{4})/i.test(text) && text.length > 50;
+    s.summary = /(?:summary|ringkasan|profil|profile|objective|tujuan|overview)/i.test(l);
+    s.experience = /(?:experience|pengalaman|employment|pekerjaan|karir|career|work history)/i.test(l);
+    s.education = /(?:education|pendidikan|degree|university|universitas|bachelor|master|s1|s2)/i.test(l);
+    s.skills = /(?:skills|keahlian|kompetensi|competencies|expertise|tools|software|bahasa|languages)/i.test(l);
+    s.certifications = /(?:certification|sertifikasi|certified|certificate|credential|bnsp|lpk)/i.test(l);
+    return s;
+}
+
+function runATSAnalysis(cv, jd, sections) {
+    let score = 0;
+    const suggestions = [];
+    const keywords = { hit: [], miss: [] };
+
+    // Sections (30 pts)
+    let secScore = 0;
+    if (sections.contact) secScore += 5; else suggestions.push({type:'bad', text:'Informasi kontak tidak lengkap. Pastikan ada nama, email, telepon, dan lokasi.'});
+    if (sections.summary) secScore += 5; else suggestions.push({type:'warning', text:'Tambahkan Professional Summary (2-4 kalimat) di awal CV.'});
+    if (sections.experience) secScore += 10; else suggestions.push({type:'bad', text:'Bagian Experience wajib ada dengan detail jabatan, perusahaan, tahun, dan achievement.'});
+    if (sections.education) secScore += 5; else suggestions.push({type:'warning', text:'Tambahkan bagian Pendidikan dengan institusi, jurusan, dan tahun.'});
+    if (sections.skills) secScore += 5; else suggestions.push({type:'warning', text:'Tambahkan bagian Skills untuk membantu ATS menemukan kecocokan teknis.'});
+    score += secScore;
+
+    // Format (20 pts)
+    let fmtScore = 20;
+    if (/<table|table>/i.test(cv)) { fmtScore -= 10; suggestions.push({type:'bad', text:'CV mengandung tabel! ATS sulit membaca tabel. Gunakan format teks dengan bullet points.'}); }
+    if (!/[•\-*]/.test(cv)) { fmtScore -= 5; suggestions.push({type:'warning', text:'Gunakan bullet points (• atau -) untuk achievements agar mudah dibaca ATS.'}); }
+    if (/foto|photo|img|image/i.test(cv)) { fmtScore -= 5; suggestions.push({type:'warning', text:'Hindari gambar/foto dalam CV untuk ATS.'}); }
+    score += Math.max(0, fmtScore);
+
+    // Content (25 pts)
+    let contScore = 25;
+    const words = cv.split(/\s+/).length;
+    if (words < 150) { contScore -= 10; suggestions.push({type:'warning', text:'CV terlalu singkat ('+words+' kata). Target: 300-600 kata.'}); }
+    else if (words > 800) { contScore -= 5; suggestions.push({type:'warning', text:'CV terlalu panjang ('+words+' kata). Pertimbangkan persingkat jadi 1-2 halaman.'}); }
+
+    const quants = (cv.match(/\d+%|\d+\s*(?:juta|miliar|million|billion|ribu|thousand|meningkat|increase|decrease|reduce|improve)/gi) || []).length;
+    if (quants < 2) { contScore -= 5; suggestions.push({type:'warning', text:'Tambahkan achievement terukur dengan angka (contoh: "meningkatkan efisiensi 30%").'}); }
+    else { suggestions.push({type:'good', text:'Bagus! Ada '+quants+' achievement terukur dengan angka.'}); }
+
+    const actions = ['led','managed','developed','implemented','designed','created','built','optimized','streamlined','negotiated','advised','conducted','achieved','increased','decreased','mengelola','memimpin','mengembangkan','mendesain','membangun'];
+    if (!actions.some(v => cv.toLowerCase().includes(v))) { contScore -= 5; suggestions.push({type:'warning', text:'Gunakan action verbs di awal bullet point: Led, Managed, Developed, Implemented.'}); }
+    score += Math.max(0, contScore);
+
+    // Keywords (25 pts)
+    if (jd && jd.trim()) {
+        const jdWords = extractKeywords(jd);
+        const cvL = cv.toLowerCase();
+        let match = 0;
+        jdWords.forEach(w => {
+            if (cvL.includes(w.toLowerCase())) { match++; keywords.hit.push(w); }
+            else { keywords.miss.push(w); }
+        });
+        const rate = jdWords.length ? match / jdWords.length : 0;
+        score += Math.round(rate * 25);
+        if (rate < 0.4) suggestions.push({type:'bad', text:'Keyword match rendah ('+Math.round(rate*100)+'%). Tailor CV dengan keyword dari job description.'});
+        else if (rate < 0.7) suggestions.push({type:'warning', text:'Keyword match cukup ('+Math.round(rate*100)+'%). Masih ada '+keywords.miss.length+' keyword belum ter-cover.'});
+        else suggestions.push({type:'good', text:'Keyword match sangat baik ('+Math.round(rate*100)+')%! CV well-optimized.'});
+    } else {
+        score += 15;
+        suggestions.push({type:'warning', text:'Tambahkan Job Description untuk analisis keyword lebih akurat.'});
+    }
+
+    return { score: Math.min(100, score), suggestions, keywords };
+}
+
+function extractKeywords(text) {
+    const stop = new Set(['and','the','for','with','you','your','our','we','are','is','to','of','in','a','an','as','or','by','from','at','this','that','have','has','will','be','should','can','must','dan','yang','untuk','dengan','pada','dari','ke','di','adalah']);
+    const words = text.split(/[\s,;()]+/);
+    const result = [];
+    words.forEach(w => {
+        const clean = w.replace(/[^a-zA-Z0-9\-\/]/g, '').toLowerCase();
+        if (clean.length > 3 && !stop.has(clean) && !result.includes(clean)) result.push(w.trim());
+    });
+    return result.slice(0, 30);
+}
+
+function displayScore(score) {
+    document.getElementById('scoreNum').textContent = score;
+    document.getElementById('scoreBar').style.width = score + '%';
+    const box = document.getElementById('scoreBox');
+    if (score >= 80) box.style.background = 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)';
+    else if (score >= 60) box.style.background = 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)';
+    else box.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+}
+
+function displaySections(sections) {
+    const labels = {contact:'Kontak', summary:'Summary', experience:'Experience', education:'Edukasi', skills:'Skills', certifications:'Sertifikasi'};
+    let html = '<div style="margin-bottom:10px;"><strong style="font-size:13px;">Struktur CV:</strong><div style="margin-top:6px;">';
+    for (let k in sections) {
+        html += '<span class="section-tag '+ (sections[k] ? 'tag-found' : 'tag-missing') + '">' + (sections[k] ? '✓' : '✗') + ' ' + labels[k] + '</span>';
+    }
+    html += '</div></div>';
+    document.getElementById('sectionsCheck').innerHTML = html;
+}
+
+function displaySuggestions(list) {
+    document.getElementById('suggestionsList').innerHTML = list.map(s => '<div class="suggestion-item '+s.type+'">'+s.text+'</div>').join('');
+}
+
+function displayKeywords(kw) {
+    const el = document.getElementById('keywordCloud');
+    let html = '';
+    kw.hit.forEach(w => html += '<span class="keyword hit">✓ '+w+'</span>');
+    kw.miss.forEach(w => html += '<span class="keyword miss">✗ '+w+'</span>');
+    el.innerHTML = html || '<span style="font-size:13px;color:#666;">Tidak ada keyword untuk ditampilkan.</span>';
+}
+
+function generateOptimizedCV(text, sections) {
+    const lines = text.split('\n');
+    let html = '';
+    let inList = false;
+
+    lines.forEach(line => {
+        const trimmed = line.trim();
+        if (!trimmed) {
+            if (inList) { html += '</ul>'; inList = false; }
+            html += '<p>&nbsp;</p>';
+            return;
+        }
+        if (/^(PROFESSIONAL SUMMARY|SUMMARY|RINGKASAN|EXPERIENCE|PENGALAMAN|EDUCATION|PENDIDIKAN|SKILLS|KEAHLIAN|CERTIFICATIONS|SERTIFIKASI|CORE COMPETENCIES|ACHIEVEMENTS|PROJECTS|LANGUAGES|BAHASA|REFERENCES|CONTACT|PROFIL|PROFILE|OBJECTIVE|TUJUAN)/i.test(trimmed) || 
+            (trimmed.length < 40 && trimmed === trimmed.toUpperCase() && !trimmed.includes('•') && !trimmed.startsWith('-'))) {
+            if (inList) { html += '</ul>'; inList = false; }
+            html += '<h2>'+trimmed+'</h2>';
+        }
+        else if (trimmed.startsWith('•') || trimmed.startsWith('-') || trimmed.startsWith('*')) {
+            if (!inList) { html += '<ul>'; inList = true; }
+            html += '<li>'+trimmed.substring(1).trim()+'</li>';
+        }
+        else if (!sections.summary && !sections.experience && /[@|+]|linkedin|github/i.test(trimmed)) {
+            html += '<p class="contact">'+trimmed+'</p>';
+        }
+        else {
+            if (inList) { html += '</ul>'; inList = false; }
+            html += '<p>'+trimmed+'</p>';
+        }
+    });
+    if (inList) html += '</ul>';
+    return html;
+}
+
+// ===== PREVIEW SYNC =====
+document.getElementById('cvEditor').addEventListener('input', updatePreview);
+function updatePreview() {
+    document.getElementById('livePreview').innerHTML = document.getElementById('cvEditor').innerHTML;
+}
+
+// ===== EXPORT =====
+function exportToWord() {
+    const content = document.getElementById('cvEditor').innerHTML;
+    const title = document.querySelector('#cvEditor h1, #cvEditor h2')?.textContent || 'CV-ATS-Optimized';
+
+    const header = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>'+title+'</title><style>body{font-family:Calibri,Arial,sans-serif;font-size:11pt;line-height:1.5;color:#000;}h1{font-size:20pt;text-align:center;margin-bottom:6pt;}h2{font-size:12pt;border-bottom:1px solid #000;padding-bottom:3pt;margin-top:14pt;margin-bottom:6pt;}p{margin-bottom:6pt;}ul{margin-left:18pt;margin-bottom:6pt;}li{margin-bottom:3pt;}.contact{text-align:center;font-size:10pt;margin-bottom:12pt;}</style></head><body>';
+    const footer = '</body></html>';
+
+    const blob = new Blob(['\ufeff', header + content + footer], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'CV-ATS-Optimized.doc';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+}
+
+function printCV() {
+    const content = document.getElementById('livePreview').innerHTML;
+    const w = window.open('', '_blank');
+    w.document.write('<html><head><title>Print CV</title><style>body{font-family:Calibri,Arial,sans-serif;font-size:11pt;line-height:1.5;color:#000;padding:40px;}h1{font-size:20pt;text-align:center;margin-bottom:6pt;}h2{font-size:12pt;border-bottom:1px solid #000;padding-bottom:3pt;margin-top:14pt;margin-bottom:6pt;}p{margin-bottom:6pt;}ul{margin-left:18pt;margin-bottom:6pt;}li{margin-bottom:3pt;}.contact{text-align:center;font-size:10pt;margin-bottom:12pt;}</style></head><body>'+content+'</body></html>');
+    w.document.close();
+    w.focus();
+    setTimeout(() => { w.print(); w.close(); }, 500);
+}
+</script>
+</body>
+</html>
